@@ -1,0 +1,39 @@
+#! /bin/bash
+
+LDAPSEARCH_OPTS=${LDAPSEARCH_OPTS:-"-o ldif-wrap=no -E pr=2147483647/noprompt -QLLL"}
+LDAPSEARCH=${LDAPSEARCH:-$(type -P ldapsearch)}
+
+search=$1
+shift
+
+${LDAPSEARCH} ${LDAPSEARCH_OPTS} "${search}" $* |\
+awk -v attrnames="$*" '
+BEGIN {
+        nheaders=split(attrnames, headers, " ");
+        for (i = 1; i <= nheaders; i++) {
+                headers[i] = tolower(headers[i]);
+                printf("%s%s", i == 1 ? "" : ",", headers[i]);
+        }
+        printf("\n");
+}
+/^dn:/ {
+        # create empty attrs array)
+        split("", attrs);
+}
+/^.+:/ {
+        n=tolower($1);
+        gsub(/:$/, "", n);
+        sub("^" $1 FS, "");
+        if (attrs[n] == "") {
+                attrs[n] = $0;
+        } else {
+                attrs[n] = attrs[n] "|" $0;
+        }
+}
+/^$/ {
+        for (i = 1; i <= nheaders; i++) {
+                printf("%s%s", i == 1 ? "" : ",", attrs[headers[i]]);
+        }
+        printf("\n");
+}
+'
